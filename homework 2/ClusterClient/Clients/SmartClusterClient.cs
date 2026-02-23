@@ -13,9 +13,25 @@ namespace ClusterClient.Clients
         {
         }
 
-        public override Task<string> ProcessRequestAsync(string query, TimeSpan timeout)
+        public override async Task<string> ProcessRequestAsync(string query, TimeSpan timeout)
         {
-            throw new NotImplementedException();
+            var timeoutForReplica = timeout / ReplicaAddresses.Length;
+            var requests = new List<Task<string>>();
+            foreach (var replicaAddress in ReplicaAddresses)
+            {
+                var timeoutTask = Task.Delay(timeoutForReplica);
+                var request = CreateRequest(replicaAddress + "?query=" + query);
+                requests.Add(ProcessRequestAsync(request));
+                var requestResult = await Task.WhenAny(requests.Cast<Task>().Concat(new[] {timeoutTask}));
+                if (requestResult != timeoutTask)
+                {
+                    var result = (Task<string>)requestResult;
+                    if (result.Status == TaskStatus.RanToCompletion)
+                        return result.Result;
+                    requests.Remove(result);
+                }
+            }
+            throw new TimeoutException();
         }
 
         protected override ILog Log => LogManager.GetLogger(typeof(SmartClusterClient));
