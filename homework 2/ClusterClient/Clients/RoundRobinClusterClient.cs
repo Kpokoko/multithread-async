@@ -13,9 +13,22 @@ namespace ClusterClient.Clients
         {
         }
 
-        public override Task<string> ProcessRequestAsync(string query, TimeSpan timeout)
+        public override async Task<string> ProcessRequestAsync(string query, TimeSpan timeout)
         {
-            throw new NotImplementedException();
+            var timeoutForReplica = timeout / ReplicaAddresses.Length;
+            foreach (var replicaAddress in ReplicaAddresses)
+            {
+                var timeoutTask = Task.Delay(timeoutForReplica);
+                var request = CreateRequest(replicaAddress + "?query=" + query);
+                var requestResult = await Task.WhenAny(ProcessRequestAsync(request), timeoutTask);
+                if (requestResult != timeoutTask)
+                {
+                    var result = (Task<string>)requestResult;
+                    if (result.Status == TaskStatus.RanToCompletion)
+                        return result.Result;
+                }
+            }
+            throw new TimeoutException();
         }
 
         protected override ILog Log => LogManager.GetLogger(typeof(RoundRobinClusterClient));
