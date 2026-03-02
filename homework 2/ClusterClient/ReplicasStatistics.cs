@@ -17,8 +17,11 @@ public class ReplicasStatistics
 
     public void UpdateStats(string replicaAddress, double workTime)
     {
-        _replicaStatistics[replicaAddress] =
-            _replicaStatistics[replicaAddress] * ConfidenceFactor + workTime * (1 - ConfidenceFactor);
+        _replicaStatistics.AddOrUpdate(
+            replicaAddress,
+            workTime,
+            (_, previousValue) => previousValue * ConfidenceFactor + workTime * (1 - ConfidenceFactor)
+        );
     }
 
     public double GetStats(string replicaAddress)

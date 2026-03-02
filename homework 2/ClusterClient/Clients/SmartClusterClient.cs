@@ -27,11 +27,15 @@ namespace ClusterClient.Clients
             for (int i = 0; i < sortedReplicas.Length; i++)
             {
                 var remainingTime = timeout - timer.Elapsed;
+                if (remainingTime <= TimeSpan.Zero)
+                    throw new TimeoutException();
                 var timeoutForReplica = TimeSpan.FromTicks(remainingTime.Ticks / (sortedReplicas.Length - i));
+                if (timeoutForReplica <= TimeSpan.Zero)
+                    throw new TimeoutException();
                 var timeoutTask = Task.Delay(timeoutForReplica);
                 var request = CreateRequest(sortedReplicas[i] + "?query=" + query);
                 requests.Add(ProcessRequestAsync(request), (sortedReplicas[i], DateTime.Now));
-                var requestResult = await Task.WhenAny(requests.Keys.Cast<Task>().Concat(new[] { timeoutTask }));
+                var requestResult = await Task.WhenAny(requests.Keys.Concat(new[] { timeoutTask }));
                 if (requestResult != timeoutTask)
                 {
                     var result = (Task<string>)requestResult;
@@ -41,11 +45,16 @@ namespace ClusterClient.Clients
                     {
                         _replicasStatistics.UpdateStats(replicaData.Item1, time.TotalMilliseconds);
                         requests.Remove(result);
+                        foreach (var badRequest in requests)
+                            _replicasStatistics.UpdateStats(badRequest.Value.Item1, timeoutForReplica.TotalMilliseconds);
+                        requests.Clear();
                         return result.Result;
                     }
                     _replicasStatistics.UpdateStats(replicaData.Item1, time.TotalMilliseconds);
                     requests.Remove(result);
                 }
+                else
+                    _replicasStatistics.UpdateStats(sortedReplicas[i], timeoutForReplica.TotalMilliseconds);
             }
 
             throw new TimeoutException();

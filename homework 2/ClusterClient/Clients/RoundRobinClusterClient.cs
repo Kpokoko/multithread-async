@@ -26,7 +26,11 @@ namespace ClusterClient.Clients
             for (int i = 0; i < sortedReplicas.Length; i++)
             {
                 var remainingTime = timeout - timer.Elapsed;
+                if (remainingTime <= TimeSpan.Zero)
+                    throw new TimeoutException();
                 var timeoutForReplica = TimeSpan.FromTicks(remainingTime.Ticks / (sortedReplicas.Length - i));
+                if (timeoutForReplica <= TimeSpan.Zero)
+                    throw new TimeoutException();
                 var timeoutTask = Task.Delay(timeoutForReplica);
                 var request = CreateRequest(sortedReplicas[i] + "?query=" + query);
                 var task = ProcessRequestAsync(request);
@@ -46,6 +50,8 @@ namespace ClusterClient.Clients
                     _replicasStatistics.UpdateStats(replicaData.Item1, timeout.TotalMilliseconds);
                     sentTasks.Remove(task);
                 }
+                else
+                    _replicasStatistics.UpdateStats(sortedReplicas[i], timeoutForReplica.TotalMilliseconds);
             }
             throw new TimeoutException();
         }
